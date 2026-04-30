@@ -1,0 +1,236 @@
+
+{
+  "entities": {
+    "Guest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Guest",
+      "type": "object",
+      "description": "Represents a guest registered for the 'Customer Meet 2026' event.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Guest entity."
+        },
+        "fullName": {
+          "type": "string",
+          "description": "The full name of the guest."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the guest.",
+          "format": "email"
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "The WhatsApp contact number of the guest, including international dialing code."
+        },
+        "companyName": {
+          "type": "string",
+          "description": "The company the guest represents."
+        },
+        "department": {
+          "type": "string",
+          "description": "The department of the guest within their company."
+        },
+        "designation": {
+          "type": "string",
+          "description": "The job designation or title of the guest."
+        },
+        "registrationDate": {
+          "type": "string",
+          "description": "The date and time when the guest registered.",
+          "format": "date-time"
+        },
+        "qrCodeData": {
+          "type": "string",
+          "description": "The raw data encoded in the guest's QR code for check-in."
+        },
+        "qrCodeImageUrl": {
+          "type": "string",
+          "description": "URL to the image of the guest's QR code.",
+          "format": "uri"
+        },
+        "checkedIn": {
+          "type": "boolean",
+          "description": "Indicates whether the guest has checked in to the event (default false)."
+        },
+        "checkInTime": {
+          "type": "string",
+          "description": "The date and time the guest checked in. Null if not yet checked in.",
+          "format": "date-time"
+        },
+        "checkInPhotoUrl": {
+          "type": "string",
+          "description": "URL to a photo taken during the guest's check-in. Null if no photo was taken or guest not checked in.",
+          "format": "uri"
+        },
+        "googleSheetsRowId": {
+          "type": "string",
+          "description": "The unique identifier for the corresponding row in the Google Sheets spreadsheet used for data import/export."
+        },
+        "confirmationSent": {
+          "type": "boolean",
+          "description": "Indicates whether a confirmation message has been sent to the guest (default false)."
+        }
+      },
+      "required": [
+        "id",
+        "fullName",
+        "email",
+        "whatsappNumber",
+        "companyName",
+        "department",
+        "designation",
+        "registrationDate",
+        "qrCodeData",
+        "qrCodeImageUrl",
+        "checkedIn",
+        "googleSheetsRowId",
+        "confirmationSent"
+      ]
+    },
+    "TeamUser": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TeamUser",
+      "type": "object",
+      "description": "Represents an authorized team member who can log into the check-in system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the TeamUser entity, corresponding to Firebase Authentication user ID (uid)."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the team member."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the team member, used for login.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the team member (e.g., 'admin' or 'staff')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The date and time when the team user account was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role",
+        "createdAt"
+      ]
+    },
+    "CheckInLog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CheckInLog",
+      "type": "object",
+      "description": "Records each instance of a guest checking into the event, including details about the check-in process.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the CheckInLog entity."
+        },
+        "guestId": {
+          "type": "string",
+          "description": "Reference to the Guest who was checked in. (Relationship: Guest 1:N CheckInLog)"
+        },
+        "guestName": {
+          "type": "string",
+          "description": "The full name of the guest at the time of check-in, for historical logging purposes."
+        },
+        "checkInTime": {
+          "type": "string",
+          "description": "The exact date and time the guest checked in.",
+          "format": "date-time"
+        },
+        "checkedInBy": {
+          "type": "string",
+          "description": "Reference to the TeamUser who performed the check-in. (Relationship: TeamUser 1:N CheckInLog)"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL to a photo taken during this specific check-in event, if applicable.",
+          "format": "uri"
+        },
+        "method": {
+          "type": "string",
+          "description": "The method used for check-in (e.g., 'qr_scan' or 'onsite')."
+        }
+      },
+      "required": [
+        "id",
+        "guestId",
+        "guestName",
+        "checkInTime",
+        "checkedInBy",
+        "photoUrl",
+        "method"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/team_users/{teamUserId}",
+        "definition": {
+          "entityName": "TeamUser",
+          "schema": {
+            "$ref": "#/backend/entities/TeamUser"
+          },
+          "description": "Stores details for authorized team members, including their role. This collection serves as the primary source of truth for DBAC (Database-Based Access Control) to determine system permissions. Access is restricted such that only the authenticated user can read their own profile, and creation/updates are typically reserved for administrators (implemented via security rules or backend functions).",
+          "params": [
+            {
+              "name": "teamUserId",
+              "description": "The unique identifier of the team member, corresponding to their Firebase Authentication UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/guests/{guestId}",
+        "definition": {
+          "entityName": "Guest",
+          "schema": {
+            "$ref": "#/backend/entities/Guest"
+          },
+          "description": "Contains registration information for all event guests. All documents in this collection share the same security posture, allowing any authenticated team member (determined by existence in the 'team_users' collection) to read, create, update, and delete entries. This structure supports efficient queries for the guest list, including sorting by 'registrationDate' in descending order as required.",
+          "params": [
+            {
+              "name": "guestId",
+              "description": "The unique identifier for a guest registration."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/checkInLogs/{logId}",
+        "definition": {
+          "entityName": "CheckInLog",
+          "schema": {
+            "$ref": "#/backend/entities/CheckInLog"
+          },
+          "description": "Records individual guest check-in events. Each log includes a reference to the guest and the team member who performed the check-in, along with a denormalized guest name for historical integrity. This collection's security posture is homogeneous, granting any authenticated team member read and write access. No authorization-specific denormalization is required within these documents as access is global for authorized team members.",
+          "params": [
+            {
+              "name": "logId",
+              "description": "The unique identifier for a specific check-in log entry."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to be secure, scalable, and debuggable, adhering to the core principles and mandates. Authorization Independence is paramount: instead of relying on hierarchical `get()` calls in security rules, access is determined solely by the presence and role of the authenticated `request.auth.uid` within the `/team_users/{teamUserId}` collection. This eliminates transactional complexities and makes rules atomic and easy to debug. All authorization checks for application data (`guests`, `checkInLogs`) will verify if `request.auth.uid` exists in the `team_users` collection, ensuring only authenticated team members can interact with the system.\n\nStructural Segregation is applied by creating distinct top-level collections for `guests`, `team_users`, and `checkInLogs`. Each collection maintains a homogeneous security posture: all documents within `/guests` are accessible to any authenticated team member, as are all documents within `/checkInLogs`. This simplifies security rules, as there's no need for complex conditional logic within a single collection based on document content (e.g., 'public' vs. 'private' documents).\n\nQueryability and Authorization (QAPs) are supported as follows:\n*   For `/team_users/{teamUserId}`, rules will ensure that users can only read their own user profile (i.e., `request.auth.uid == teamUserId`). This naturally supports QAPs for list operations by restricting results to the authenticated user's record.\n*   For `/guests/{guestId}` and `/checkInLogs/{logId}`, the security model allows any authenticated team member to read/list all documents in these collections. This is a deliberate design choice based on the application requirements, where all team members have broad access to event management data. Rules will grant `list` access to the entire collection if the `request.auth.uid` is an authenticated team member (verified by `exists(/team_users/$(request.auth.uid))`). This is QAP-compliant as it does not attempt to filter results based on user-specific attributes within the collection itself; rather, it grants or denies access to the *entire* collection for `list` operations, making the rule efficient and predictable.\n\nData clarity is maintained through explicit schema definitions, consistent naming conventions (e.g., `{guestId}`), and standardized fields. The `Guest` entity includes `registrationDate` which will be used for client-side sorting as requested, by ordering Firestore queries `orderBy('registrationDate', 'desc')` to display newest entries first, facilitating efficient data retrieval for the guest list table and filtered results."
+  }
+}

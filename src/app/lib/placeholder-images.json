@@ -1,0 +1,11 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "app-logo",
+      "description": "Aum Dacro Coatings logo with grey and green overlapping curves forming an M/A shape",
+      "imageUrl": "https://picsum.photos/seed/aumdacro-logo-v3/400/400",
+      "imageHint": "industrial logo"
+    }
+  ]
+}
