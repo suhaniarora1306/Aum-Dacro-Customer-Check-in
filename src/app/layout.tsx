@@ -1,9 +1,15 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/auth-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase';
 import OfflineBanner from "@/components/offline-banner";
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Aum Dacro Check-In',
@@ -30,18 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-        {/* PWA Fallback Meta Tags */}
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="ADC Check-In" />
-        <link rel="apple-touch-icon" href="/logo.png" />
-      </head>
-      <body className="font-body antialiased bg-background text-foreground" suppressHydrationWarning>
+      <body className={`${inter.className} font-body antialiased bg-background text-foreground`} suppressHydrationWarning>
         <OfflineBanner />
         <FirebaseClientProvider>
           <AuthProvider>

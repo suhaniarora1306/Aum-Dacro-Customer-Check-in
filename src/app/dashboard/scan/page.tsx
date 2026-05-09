@@ -153,7 +153,7 @@ export default function QRScannerPage() {
         </Button>
         <div>
           <h1 className="text-xl font-bold">Scan QR Code</h1>
-          <p className="text-xs text-muted-foreground">Point camera at visitor's QR code</p>
+          <p className="text-xs text-muted-foreground">Point camera at visitor&apos;s QR code</p>
         </div>
       </div>
 

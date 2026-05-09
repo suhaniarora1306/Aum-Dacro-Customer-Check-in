@@ -9,8 +9,7 @@ import {
   query, 
   where, 
   setDoc, 
-  serverTimestamp,
-  onSnapshot 
+  serverTimestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { 
@@ -54,65 +53,44 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { addVisitorToSheet } from "@/lib/sheets";
-import { useFirestore, useMemoFirebase, useCollection } from "@/firebase";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { useFirestore } from "@/firebase";
+import { cn, formatDate } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { firestoreCallWithTimeout } from "@/lib/firestore-with-timeout";
+import { getErrorMessage } from "@/lib/fetch-with-timeout";
+
+const TYPE_COLORS: Record<string, string> = {
+  "Chief Guest": "#8B0000",
+  "Key Speaker": "#B8860B",
+  "OEM": "#0D47A1",
+  "Customer": "#1B5E20",
+  "Vendor Partners": "#4A1480",
+  "Press/Media": "#B71C1C",
+  "Internal Team": "#37474F",
+  "Walk-In Guest": "#E65100",
+  "Guest": "#1565C0",
+};
 
 const DEPARTMENTS = [
-  "Design",
-  "Engineering",
-  "Finance & Accounts",
-  "Manufacturing / Production",
-  "Materials / Material Analysis",
-  "Operations",
-  "Purchase / Procurement",
-  "Quality (QA / SQA / Supplier Quality)",
-  "R&D / NPD / Product Development",
-  "Sales & Marketing",
-  "Strategic Sourcing",
-  "Supply Chain / SCM",
-  "Top Management",
-  "Vendor Development / Tier 2 Division"
+  "Design", "Engineering", "Finance & Accounts", "Manufacturing / Production",
+  "Materials / Material Analysis", "Operations", "Purchase / Procurement",
+  "Quality (QA / SQA / Supplier Quality)", "R&D / NPD / Product Development",
+  "Sales & Marketing", "Strategic Sourcing", "Supply Chain / SCM",
+  "Top Management", "Vendor Development / Tier 2 Division"
 ];
 
 const DESIGNATIONS = [
-  "Chairman / Group Director",
-  "Managing Director (MD) / CEO",
-  "President",
-  "Executive Vice President (EVP)",
-  "Senior Vice President (SVP)",
-  "Vice President (VP) / AVP",
-  "Sr. General Manager",
-  "General Manager (GM)",
-  "Deputy General Manager (DGM) / AGM",
-  "Senior Manager",
-  "Manager",
-  "Deputy Manager / Assistant Manager",
-  "Senior Engineer / Engineer",
-  "Executive / Officer",
-  "Proprietor / Owner / Partner"
+  "Chairman / Group Director", "Managing Director (MD) / CEO", "President",
+  "Executive Vice President (EVP)", "Senior Vice President (SVP)",
+  "Vice President (VP) / AVP", "Sr. General Manager", "General Manager (GM)",
+  "Deputy General Manager (DGM) / AGM", "Senior Manager", "Manager",
+  "Deputy Manager / Assistant Manager", "Senior Engineer / Engineer",
+  "Executive / Officer", "Proprietor / Owner / Partner"
 ];
 
-function formatDate(dateValue: any) {
-  if (!dateValue) return "N/A";
-  try {
-    // Handle Firestore timestamp object
-    if (dateValue && dateValue.seconds) {
-      return new Date(dateValue.seconds * 1000)
-        .toLocaleDateString("en-IN");
-    }
-    // Handle string date
-    var d = new Date(dateValue);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString("en-IN");
-    }
-    // Return as-is if already formatted string
-    return dateValue.toString();
-  } catch(e) {
-    return dateValue.toString();
-  }
-}
+const CUSTOMER_TYPES = [
+  "Chief Guest", "Key Speaker", "OEM", "Customer", "Vendor Partners", "Press/Media", "Internal Team", "Walk-In Guest", "Guest"
+];
 
 function SearchableDropdown({ options, value, onChange, placeholder }: { options: string[], value: string, onChange: (val: string) => void, placeholder: string }) {
   const [open, setOpen] = useState(false);
@@ -220,7 +198,8 @@ export default function GuestListPage() {
     whatsappNumber: "",
     companyName: "",
     department: "",
-    designation: ""
+    designation: "",
+    customerType: "Guest"
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -232,7 +211,7 @@ export default function GuestListPage() {
     setIsDataLoading(true);
     try {
       const guestsQuery = query(collection(db, "guests"));
-      const guestsSnap = await getDocs(guestsQuery);
+      const guestsSnap = await firestoreCallWithTimeout(() => getDocs(guestsQuery));
       const guestsList = guestsSnap.docs.map(doc => ({ 
         id: doc.id, 
         docId: doc.id, 
@@ -240,7 +219,7 @@ export default function GuestListPage() {
       }));
 
       const visitorsQuery = query(collection(db, "visitors"));
-      const visitorsSnap = await getDocs(visitorsQuery);
+      const visitorsSnap = await firestoreCallWithTimeout(() => getDocs(visitorsQuery));
       const visitorsList = visitorsSnap.docs.map(doc => ({ 
         id: doc.id, 
         docId: doc.id, 
@@ -251,7 +230,7 @@ export default function GuestListPage() {
       setAllGuests(merged);
     } catch (err) {
       console.error(err);
-      toast({ variant: "destructive", title: "Fetch Error", description: "Failed to load guest registries." });
+      toast({ variant: "destructive", title: "Fetch Error", description: getErrorMessage(err) });
     } finally {
       setIsDataLoading(false);
     }
@@ -265,44 +244,6 @@ export default function GuestListPage() {
     localStorage.removeItem("printGuests");
     localStorage.setItem("printGuests", JSON.stringify([guest]));
     router.push("/dashboard/print-badge");
-  };
-
-  const formatRegDate = (guest: any): string => {
-    const raw = guest.registrationDate 
-      || guest.createdAt
-      || guest.created_at
-      || guest.registration_date 
-      || guest.timestamp
-      || guest.date
-      || guest.eventDate
-      || guest.regDate
-      || guest.reg_date
-      || guest.addedAt
-      || guest.added_at
-      || guest.submittedAt
-      || guest.submitted_at
-      || null;
-    
-    if (!raw) return "N/A";
-    
-    try {
-      if (raw && typeof raw.toDate === "function") {
-        return format(raw.toDate(), "dd MMM, HH:mm");
-      }
-      if (raw && raw.seconds) {
-        return format(new Date(raw.seconds * 1000), "dd MMM, HH:mm");
-      }
-      if (typeof raw === "string" && raw.length > 0) {
-        const d = new Date(raw);
-        if (!isNaN(d.getTime())) return format(d, "dd MMM, HH:mm");
-      }
-      if (typeof raw === "number") {
-        return format(new Date(raw), "dd MMM, HH:mm");
-      }
-      return formatDate(raw);
-    } catch {
-      return "N/A";
-    }
   };
 
   useEffect(() => {
@@ -342,33 +283,27 @@ export default function GuestListPage() {
   };
 
   const uniqueCompanies = useMemo(() => {
-    const companies = allGuests.map(g => g.companyName).filter(Boolean);
-    return Array.from(new Set(companies)).sort();
+    const companiesMap = new Map();
+    allGuests.forEach(g => {
+      const name = (g.companyName || "").trim();
+      if (name) {
+        const lower = name.toLowerCase();
+        if (!companiesMap.has(lower)) {
+          companiesMap.set(lower, name);
+        }
+      }
+    });
+    return Array.from(companiesMap.values()).sort((a, b) => a.localeCompare(b));
   }, [allGuests]);
 
   const filteredGuests = useMemo(() => {
     const sorted = [...allGuests].sort((a: any, b: any) => {
       function getTime(g: any): number {
-        const raw = g.registrationDate 
-          || g.createdAt 
-          || g.created_at
-          || g.registration_date 
-          || g.timestamp
-          || g.date
-          || g.eventDate
-          || g.regDate
-          || g.reg_date
-          || g.addedAt
-          || g.added_at
-          || g.submittedAt
-          || g.submitted_at
-          || null;
+        const raw = g.registrationDate || g.createdAt || g.timestamp;
         if (!raw) return 0;
         if (raw.toDate) return raw.toDate().getTime();
         if (raw.seconds) return raw.seconds * 1000;
-        if (typeof raw === "string") return new Date(raw).getTime() || 0;
-        if (typeof raw === "number") return raw;
-        return 0;
+        return new Date(raw).getTime() || 0;
       }
       return getTime(b) - getTime(a);
     });
@@ -378,8 +313,19 @@ export default function GuestListPage() {
         guest.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         guest.email?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesCompany = selectedCompany === "" || guest.companyName === selectedCompany;
-      const matchesType = selectedType === "" || guest.customerType === selectedType;
+      const matchesCompany = selectedCompany === "" || 
+        (guest.companyName || "").toLowerCase().trim() === selectedCompany.toLowerCase().trim();
+      
+      const matchesType = selectedType === "" ||
+        (selectedType === "Vendor Partners"
+          ? [
+              "Vendor", "vendor", "VENDOR",
+              "Partner", "partner", "PARTNER",
+              "Vendor Partners", "vendor partners",
+              "Vendor Partner", "vendor partner",
+              "VENDOR PARTNER", "VENDOR PARTNERS"
+            ].includes(guest.customerType?.trim())
+          : guest.customerType?.toLowerCase().trim() === selectedType.toLowerCase().trim());
       
       const matchesStatus = statusFilter === "All" || 
         (statusFilter === "Checked In" && guest.checkedIn) ||
@@ -396,36 +342,31 @@ export default function GuestListPage() {
     if (!confirmed) return;
 
     try {
-      // 1. Delete from Firestore using document ID
       if (docId) {
-        // Try deleting from both possible collections for legacy support
-        await deleteDoc(doc(db, "guests", docId)).catch(() => {});
-        await deleteDoc(doc(db, "visitors", docId)).catch(() => {});
+        await firestoreCallWithTimeout(() => deleteDoc(doc(db, "guests", docId))).catch(() => {});
+        await firestoreCallWithTimeout(() => deleteDoc(doc(db, "visitors", docId))).catch(() => {});
       } else {
-        // Fallback: query by visitorId
         const qG = query(collection(db, "guests"), where("visitorId", "==", visitorId));
         const qV = query(collection(db, "visitors"), where("visitorId", "==", visitorId));
-        const [snapG, snapV] = await Promise.all([getDocs(qG), getDocs(qV)]);
+        const [snapG, snapV] = await Promise.all([
+          firestoreCallWithTimeout(() => getDocs(qG)),
+          firestoreCallWithTimeout(() => getDocs(qV))
+        ]);
         
         for (const d of snapG.docs) {
-          await deleteDoc(doc(db, "guests", d.id));
+          await firestoreCallWithTimeout(() => deleteDoc(doc(db, "guests", d.id)));
         }
         for (const d of snapV.docs) {
-          await deleteDoc(doc(db, "visitors", d.id));
+          await firestoreCallWithTimeout(() => deleteDoc(doc(db, "visitors", d.id)));
         }
       }
 
-      // 2. Also delete matching checkInLogs
-      const logsQ = query(
-        collection(db, "checkInLogs"),
-        where("visitorId", "==", visitorId)
-      );
-      const logsSnap = await getDocs(logsQ);
+      const logsQ = query(collection(db, "checkInLogs"), where("guestId", "==", visitorId));
+      const logsSnap = await firestoreCallWithTimeout(() => getDocs(logsQ));
       for (const d of logsSnap.docs) {
-        await deleteDoc(doc(db, "checkInLogs", d.id));
+        await firestoreCallWithTimeout(() => deleteDoc(doc(db, "checkInLogs", d.id)));
       }
 
-      // 3. Remove from local state IMMEDIATELY
       setAllGuests(prev => prev.filter(g =>
         g.visitorId !== visitorId && g.id !== docId && g.docId !== docId
       ));
@@ -433,7 +374,7 @@ export default function GuestListPage() {
       toast({ title: "Success", description: "Guest deleted successfully" });
     } catch (error: any) {
       console.error("Delete error:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to delete guest" });
+      toast({ variant: "destructive", title: "Error", description: getErrorMessage(error) });
     }
   };
 
@@ -472,20 +413,20 @@ export default function GuestListPage() {
         companyName: formData.companyName.trim(),
         department: formData.department,
         designation: formData.designation,
-        customerType: "Guest",
+        customerType: formData.customerType,
         registrationDate: new Date().toISOString(),
         checkedIn: false,
         badgePrinted: false,
         createdAt: serverTimestamp()
       };
-      await setDoc(doc(db, "guests", guestId), newGuest);
+      await firestoreCallWithTimeout(() => setDoc(doc(db, "guests", guestId), newGuest));
       addVisitorToSheet(newGuest).catch(() => {});
       toast({ title: "Success", description: "Guest added successfully" });
       setIsAddModalOpen(false);
-      setFormData({ fullName: "", email: "", whatsappNumber: "", companyName: "", department: "", designation: "" });
+      setFormData({ fullName: "", email: "", whatsappNumber: "", companyName: "", department: "", designation: "", customerType: "Guest" });
       fetchData();
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err.message });
+      toast({ variant: "destructive", title: "Error", description: getErrorMessage(err) });
     } finally {
       setIsSubmitting(false);
     }
@@ -499,6 +440,24 @@ export default function GuestListPage() {
   };
 
   const selectStyles = "w-full h-[48px] border border-[#CBD5E0] rounded-lg px-3 text-sm bg-white text-[#1A202C] appearance-none focus:ring-2 focus:ring-primary/20 outline-none";
+
+  const bulkFilteredGuests = allGuests.filter(g => 
+    bulkFilter === "All" || 
+    (bulkFilter === "Pending" && !g.checkedIn) || 
+    (bulkFilter === "Checked In" && g.checkedIn)
+  );
+
+  const isAllBulkSelected = bulkFilteredGuests.length > 0 && bulkFilteredGuests.every(g => selectedGuestIds.has(g.id));
+
+  const handleToggleBulkSelectAll = () => {
+    const next = new Set(selectedGuestIds);
+    if (isAllBulkSelected) {
+      bulkFilteredGuests.forEach(g => next.delete(g.id));
+    } else {
+      bulkFilteredGuests.forEach(g => next.add(g.id));
+    }
+    setSelectedGuestIds(next);
+  };
 
   return (
     <div className="space-y-6">
@@ -540,7 +499,7 @@ export default function GuestListPage() {
             placeholder="All Companies"
           />
           <SearchableDropdown 
-            options={["All Types", "Key Speaker", "OEM", "Customer", "Vendor", "Partner", "Press/Media", "Internal Team", "Walk-In Guest"]}
+            options={["All Types", ...CUSTOMER_TYPES]}
             value={selectedType || "All Types"}
             onChange={(val) => setSelectedType(val === "All Types" ? "" : val)}
             placeholder="All Types"
@@ -582,65 +541,86 @@ export default function GuestListPage() {
                 ) : filteredGuests.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">No matching guests found.</TableCell></TableRow>
                 ) : (
-                  filteredGuests.map((guest) => (
-                    <TableRow key={guest.id} className="hover:bg-primary/5">
-                      <TableCell className="font-mono text-[10px] uppercase">{guest.visitorId || guest.id}</TableCell>
-                      <TableCell className="font-bold">{guest.fullName}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{guest.companyName}</span>
-                          <span className="text-[10px] text-muted-foreground uppercase">{guest.designation}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px] uppercase font-bold text-[#1565C0]">
-                          {guest.customerType || "Guest"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {guest.checkedIn ? (
-                          <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">Checked In</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px]">Pending</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatRegDate(guest)}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handlePrintBadge(guest)}>
-                              <Printer className="w-4 h-4 mr-2" /> Print Badge
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setSelectedQR({ id: guest.id, name: guest.fullName })}>
-                              <QrCode className="w-4 h-4 mr-2" />View QR
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setSelectedPhoto({
-                              name: guest.fullName,
-                              photo: guest.photoBase64 
-                                || guest.checkInPhotoUrl 
-                                || guest.photo
-                                || guest.photoUrl
-                                || guest.checkInPhoto
-                                || guest.image
-                                || "",
-                              checkInTime: guest.checkInTime || ""
-                            })}>
-                              <Camera className="w-4 h-4 mr-2" />
-                              View Photo
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteGuest(guest.visitorId || guest.id, guest.id)}>
-                              <Trash2 className="w-4 h-4 mr-2" />Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredGuests.map((guest) => {
+                    const rawDate = guest.registrationDate || guest.createdAt || guest.timestamp;
+                    
+                    let displayType = guest.customerType || "Guest";
+                    let typeColor = "#1565C0";
+
+                    const isVendorPartner = [
+                      "Vendor", "vendor", "VENDOR",
+                      "Partner", "partner", "PARTNER",
+                      "Vendor Partners", "vendor partners",
+                      "Vendor Partner", "vendor partner",
+                      "VENDOR PARTNER", "VENDOR PARTNERS"
+                    ].includes(displayType.trim());
+
+                    if (isVendorPartner) {
+                      displayType = "VENDOR PARTNER";
+                      typeColor = "#4A1480";
+                    } else {
+                      const customerTypeKey = Object.keys(TYPE_COLORS).find(
+                        key => key.toLowerCase() === displayType.toLowerCase().trim()
+                      );
+                      if (customerTypeKey) {
+                        typeColor = TYPE_COLORS[customerTypeKey];
+                      }
+                    }
+
+                    return (
+                      <TableRow key={guest.id} className="hover:bg-primary/5">
+                        <TableCell className="font-mono text-[10px] uppercase">{guest.visitorId || guest.id}</TableCell>
+                        <TableCell className="font-bold">{guest.fullName}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{guest.companyName}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{guest.designation}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px] uppercase font-bold" style={{ color: typeColor, borderColor: typeColor + '44' }}>
+                            {displayType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {guest.checkedIn ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">Checked In</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px]">Pending</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {formatDate(rawDate)}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handlePrintBadge(guest)}>
+                                <Printer className="w-4 h-4 mr-2" /> Print Badge
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setSelectedQR({ id: guest.id, name: guest.fullName })}>
+                                <QrCode className="w-4 h-4 mr-2" />View QR
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setSelectedPhoto({
+                                name: guest.fullName,
+                                photo: guest.photoBase64 || "",
+                                checkInTime: guest.checkInTime || ""
+                              })}>
+                                <Camera className="w-4 h-4 mr-2" />
+                                View Photo
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteGuest(guest.visitorId || guest.id, guest.id)}>
+                                <Trash2 className="w-4 h-4 mr-2" />Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -691,6 +671,12 @@ export default function GuestListPage() {
                 </select>
                 {formErrors.designation && <p className="text-[10px] text-destructive">{formErrors.designation}</p>}
               </div>
+              <div className="space-y-1">
+                <Label>Customer Type <span className="text-destructive">*</span></Label>
+                <select value={formData.customerType} onChange={e => setFormData({...formData, customerType: e.target.value})} className={selectStyles}>
+                  {CUSTOMER_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </div>
             </div>
             <DialogFooter className="pt-4">
               <Button type="submit" className="w-full h-12" disabled={isSubmitting}>
@@ -703,8 +689,20 @@ export default function GuestListPage() {
 
       <Dialog open={isBulkModalOpen} onOpenChange={setIsBulkModalOpen}>
         <DialogContent className="max-w-3xl flex flex-col p-0 max-h-[90vh]">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle>Bulk Print Badges</DialogTitle>
+          <DialogHeader className="p-6 border-b flex flex-row items-center justify-between">
+            <DialogTitle className="flex items-center">
+              <span>Bulk Print Badges</span>
+              {selectedGuestIds.size > 0 && (
+                <span style={{
+                  background: "#1565C0", color: "white",
+                  fontSize: "12px", fontWeight: 700,
+                  padding: "2px 10px", borderRadius: "20px",
+                  marginLeft: "8px"
+                }}>
+                  {selectedGuestIds.size} selected
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex gap-2">
@@ -714,6 +712,37 @@ export default function GuestListPage() {
                 </Button>
               ))}
             </div>
+
+            <div style={{
+              display: "flex", alignItems: "center", gap: "12px",
+              padding: "12px 16px",
+              borderBottom: "2px solid #1565C0",
+              marginBottom: "8px",
+              background: "#EBF0FA",
+              borderRadius: "8px",
+              cursor: "pointer"
+            }} onClick={handleToggleBulkSelectAll}>
+              <div style={{
+                width: "20px", height: "20px", borderRadius: "50%",
+                border: "2px solid #1565C0",
+                background: isAllBulkSelected ? "#1565C0" : "white",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0
+              }}>
+                {isAllBulkSelected && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                    stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+              </div>
+              <span style={{ fontWeight: 700, fontSize: "14px", color: "#1565C0" }}>
+                {isAllBulkSelected
+                  ? "Deselect All"
+                  : `Select All (${bulkFilteredGuests.length})`}
+              </span>
+            </div>
+
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
@@ -724,11 +753,7 @@ export default function GuestListPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allGuests.filter(g => 
-                  bulkFilter === "All" || 
-                  (bulkFilter === "Pending" && !g.checkedIn) || 
-                  (bulkFilter === "Checked In" && g.checkedIn)
-                ).map(guest => (
+                {bulkFilteredGuests.map(guest => (
                   <TableRow key={guest.id}>
                     <TableCell><Checkbox checked={selectedGuestIds.has(guest.id)} onCheckedChange={() => toggleGuestSelection(guest.id)} /></TableCell>
                     <TableCell className="font-bold text-sm">{guest.fullName}</TableCell>
@@ -799,16 +824,7 @@ export default function GuestListPage() {
             )}
             {selectedPhoto?.checkInTime && (
               <p style={{ fontSize: "12px", color: "#718096" }}>
-                Checked in at{" "}
-                {(() => {
-                  try {
-                    const raw = selectedPhoto.checkInTime;
-                    if (typeof raw === "string") {
-                      return format(new Date(raw), "dd MMM yyyy, HH:mm");
-                    }
-                    return raw;
-                  } catch { return selectedPhoto.checkInTime; }
-                })()}
+                Checked in at {formatDate(selectedPhoto.checkInTime)}
               </p>
             )}
           </div>

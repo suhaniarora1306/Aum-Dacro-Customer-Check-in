@@ -19,7 +19,8 @@ import {
   User,
   Building2,
   Briefcase,
-  CheckCircle2
+  CheckCircle2,
+  SwitchCamera
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,7 @@ export default function CheckInPage() {
 
   // Photo state
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -94,7 +96,11 @@ export default function CheckInPage() {
     const startCamera = async () => {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: 600, height: 600 }
+          video: { 
+            facingMode: facingMode, 
+            width: { ideal: 600 }, 
+            height: { ideal: 600 } 
+          }
         });
         setStream(mediaStream);
         setHasCameraPermission(true);
@@ -114,7 +120,14 @@ export default function CheckInPage() {
         stream.getTracks().forEach(t => t.stop());
       }
     };
-  }, [step, capturedImage]);
+  }, [step, capturedImage, facingMode]);
+
+  const toggleCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    setFacingMode(prev => prev === "user" ? "environment" : "user");
+  };
 
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -370,7 +383,24 @@ export default function CheckInPage() {
             <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
           ) : (
             <>
-              <video ref={videoRef} className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} autoPlay muted playsInline />
+              <video 
+                ref={videoRef} 
+                className="w-full h-full object-cover" 
+                style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none" }} 
+                autoPlay 
+                muted 
+                playsInline 
+              />
+              {!capturedImage && hasCameraPermission !== false && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 rounded-full w-10 h-10 bg-black/50 hover:bg-black/70 text-white border-none z-10"
+                  onClick={toggleCamera}
+                >
+                  <SwitchCamera className="w-5 h-5" />
+                </Button>
+              )}
               {hasCameraPermission === false && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted p-6 text-center">
                   <CameraOff className="w-12 h-12 text-muted-foreground mb-4" />

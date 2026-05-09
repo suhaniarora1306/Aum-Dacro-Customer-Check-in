@@ -67,35 +67,67 @@ import {
 import Link from "next/link";
 import { APP_NAME } from "@/config/constants";
 import { useToast } from "@/hooks/use-toast";
+import { cn, formatDate } from "@/lib/utils";
 
-function formatDate(dateValue: any) {
-  if (!dateValue) return "N/A";
-  try {
-    // Handle Firestore timestamp object
-    if (dateValue && dateValue.seconds) {
-      return new Date(dateValue.seconds * 1000)
-        .toLocaleDateString("en-IN");
-    }
-    // Handle string date
-    var d = new Date(dateValue);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString("en-IN");
-    }
-    // Return as-is if already formatted string
-    return dateValue.toString();
-  } catch(e) {
-    return dateValue.toString();
-  }
-}
+
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+
+  const isAdmin = user?.role === "Admin";
+
+  const guestsQuery = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return query(collection(firestore, "guests"), orderBy("registrationDate", "desc"));
+  }, [firestore, isAdmin]);
+  const { data: guests, isLoading: guestsLoading } = useCollection(guestsQuery);
+
+  const guestTypesQuery = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return collection(firestore, "guestTypes");
+  }, [firestore, isAdmin]);
+  const { data: guestTypes } = useCollection(guestTypesQuery);
+
+  const totalRegistered = guests?.length || 0;
+  const checkedIn = guests?.filter(g => g.checkedIn).length || 0;
+  const pending = totalRegistered - checkedIn;
+  const badgePrinted = guests?.filter(g => g.badgePrinted).length || 0;
+
+  const chartData = useMemo(() => {
+    if (!guests || !guestTypes || !isAdmin) return [];
+    return guestTypes.map(type => ({
+      name: type.name,
+      count: guests.filter(g => g.customerType === type.name).length,
+      color: type.color
+    }));
+  }, [guests, guestTypes, isAdmin]);
+
+  const filteredGuests = useMemo(() => {
+    if (!guests || !isAdmin) return [];
+    return guests.filter(g => {
+      const matchesSearch = (g.fullName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) || 
+                           (g.companyName?.toLowerCase() || "").includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "All" || 
+                           (statusFilter === "Checked In" && g.checkedIn) ||
+                           (statusFilter === "Pending" && !g.checkedIn) ||
+                           (statusFilter === "Badge Printed" && g.badgePrinted);
+      return matchesSearch && matchesStatus;
+    });
+  }, [guests, searchTerm, statusFilter, isAdmin]);
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (user && user.role !== "Admin") {
     router.push("/dashboard");
@@ -106,45 +138,6 @@ export default function AdminDashboard() {
       </div>
     );
   }
-
-  const guestsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, "guests"), orderBy("registrationDate", "desc"));
-  }, [firestore]);
-  const { data: guests, isLoading: guestsLoading } = useCollection(guestsQuery);
-
-  const guestTypesQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, "guestTypes");
-  }, [firestore]);
-  const { data: guestTypes } = useCollection(guestTypesQuery);
-
-  const totalRegistered = guests?.length || 0;
-  const checkedIn = guests?.filter(g => g.checkedIn).length || 0;
-  const pending = totalRegistered - checkedIn;
-  const badgePrinted = guests?.filter(g => g.badgePrinted).length || 0;
-
-  const chartData = useMemo(() => {
-    if (!guests || !guestTypes) return [];
-    return guestTypes.map(type => ({
-      name: type.name,
-      count: guests.filter(g => g.customerType === type.name).length,
-      color: type.color
-    }));
-  }, [guests, guestTypes]);
-
-  const filteredGuests = useMemo(() => {
-    if (!guests) return [];
-    return guests.filter(g => {
-      const matchesSearch = (g.fullName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) || 
-                           (g.companyName?.toLowerCase() || "").includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === "All" || 
-                           (statusFilter === "Checked In" && g.checkedIn) ||
-                           (statusFilter === "Pending" && !g.checkedIn) ||
-                           (statusFilter === "Badge Printed" && g.badgePrinted);
-      return matchesSearch && matchesStatus;
-    });
-  }, [guests, searchTerm, statusFilter]);
 
   const handlePrintBadge = (guest: any) => {
     localStorage.removeItem("printGuests");
